@@ -19,7 +19,7 @@ Early. See the roadmap below for what exists and what does not.
 
 - [x] Repo scaffold
 - [x] LOBSTER message and snapshot readers
-- [ ] Visible book reconstruction
+- [x] Visible book reconstruction
 - [ ] Reconstruction validated against LOBSTER's own snapshots
 - [ ] Maker/taker fee schedules
 - [ ] Queue-position fill simulator
