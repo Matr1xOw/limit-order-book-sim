@@ -1,0 +1,6 @@
+# Nothing. The simulator is stdlib-only on purpose: a project whose argument
+# is "your backtest lies to you" should be runnable by a sceptic without
+# first building an environment.
+#
+# Tests run with the stdlib runner:
+#   python3 -m unittest discover -v
