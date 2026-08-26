@@ -18,7 +18,7 @@ queue position — including the part where your order arrives late.
 Early. See the roadmap below for what exists and what does not.
 
 - [x] Repo scaffold
-- [ ] LOBSTER message and snapshot readers
+- [x] LOBSTER message and snapshot readers
 - [ ] Visible book reconstruction
 - [ ] Reconstruction validated against LOBSTER's own snapshots
 - [ ] Maker/taker fee schedules
