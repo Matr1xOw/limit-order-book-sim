@@ -1,46 +1,66 @@
 # Sample data goes here
 
-Empty on purpose. LOBSTER sample files are not ours to redistribute, and they
-are too large for git regardless — everything in this directory except this
-file is ignored.
+Empty on purpose. Market data is not ours to redistribute and is too large for
+git regardless — everything in this directory except this file is ignored.
 
-## What to download
+## LOBSTER is no longer the source
 
-From [lobsterdata.com/info/DataSamples.php](https://lobsterdata.com/info/DataSamples.php),
-take any one ticker-day. The free samples cover 2012-06-21 for a handful of
-Nasdaq names at several depths.
+The free LOBSTER samples this repo was originally built against are gone. The
+sample page now requires proof of purchase of *Trades, Quotes and Prices* plus
+an institutional academic e-mail address, and reserves the right to decline
+anyone else. `lobster.py` still reads the format and its tests still pass, but
+you cannot get the data without clearing that gate.
 
-**Pick the 10-level export.** Depth 1 is too shallow to say anything about
-queues below the touch, and 50 is a much larger download that buys nothing the
-validator or the fill simulator currently use.
+## Databento is
 
-**Pick a liquid name first.** AAPL or MSFT give a busy book with deep queues,
-which is where queue position actually bites. INTC and the thinner names are
-useful later as a contrast — a strategy that survives on AAPL and dies on a
-wide-spread name is telling you something — but start where the effect is
-largest.
+[Databento](https://databento.com) gives new accounts $125 of credit, which is
+far more than this needs. The reason it replaces LOBSTER cleanly is that one
+symbol-window can be requested under two schemas:
 
-## What to unzip into this directory
+  `mbo`     every order message — the input
+  `mbp-10`  the top ten levels  — an independent answer key
 
-A ticker-day is a pair of headerless CSVs that must stay together:
+That pairing is the whole validation strategy, and it is the thing LOBSTER was
+originally chosen for.
 
-```
-data/
-  AAPL_2012-06-21_34200000_57600000_message_10.csv
-  AAPL_2012-06-21_34200000_57600000_orderbook_10.csv
-```
+## What to request
 
-Keep LOBSTER's filenames. `lobster.find_pair` reads the level count out of the
-`_10` suffix and derives the orderbook path from the message path, so renaming
-them breaks the loader. It deliberately refuses to guess when a directory holds
-more than one pair — put a second ticker-day in its own subdirectory rather
-than alongside the first.
+Dataset `XNAS.ITCH` (Nasdaq TotalView-ITCH), one symbol, a **thirty-minute
+window**, CSV encoding. Then repeat the identical request with the other
+schema. The two must cover the same symbol and the same start/end nanosecond,
+or the validator compares different slices of the day and reports nonsense —
+check `metadata.json` in each download, the `query` blocks should differ only
+in `schema`.
 
-## Why both files
+A worked example, and the file this repo was developed against:
 
-The message file is the input; the orderbook file is LOBSTER's own
-reconstruction of the same stream, row-aligned to it. Having both is the whole
-reason this project starts here: replaying the messages and diffing against
-their book turns "my reconstruction looks right" into a claim that can fail.
+    symbol   AAPL
+    start    2026-09-02T14:30:00Z
+    end      2026-09-02T15:00:00Z
+    schemas  mbo, then mbp-10
 
-A simulator nobody can check is worth nothing.
+That is 455k messages and 176k book updates, about 140 MB uncompressed, and
+cost under five cents of the credit.
+
+**Keep the window small.** MBO is billed by volume and a full day of a liquid
+name is gigabytes. Thirty minutes is ample to validate a reconstruction, and
+nothing stops you pulling more once it works.
+
+## Unzipping
+
+Downloads arrive as a job directory holding a `.csv.zst` plus three JSON
+files. Copy the CSVs here and decompress:
+
+    zstd -d data/xnas-itch-*.mbo.csv.zst
+    zstd -d data/xnas-itch-*.mbp-10.csv.zst
+
+## What a mid-session window costs you
+
+A window starting at 14:30 begins with the book already full, and no snapshot
+precedes the first message. Roughly 0.3% of cancels and fills in the example
+above refer to orders placed before it opens, which cannot be matched.
+
+The reconstruction therefore seeds itself from the first `mbp-10` row rather
+than starting empty, and is validated on the top ten levels only — the depth
+the answer key can actually speak to. Starting from the session open would
+remove the orphans but not the depth limit, and costs considerably more data.

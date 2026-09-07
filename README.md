@@ -42,16 +42,21 @@ wearing a signal's clothes, and you cannot tell without modelling them.
 
 ## Data
 
-Built against [LOBSTER](https://lobsterdata.com) sample files, which are free
-and cover a handful of Nasdaq names for one day each. They are not redistributed
-here — see [`data/README.md`](data/README.md) for which sample to take and where
-to unzip it.
+[Databento](https://databento.com) Nasdaq TotalView-ITCH, requested twice over
+one symbol-window: `mbo` for the order messages, `mbp-10` for the top ten
+levels. See [`data/README.md`](data/README.md) for the exact request.
 
-LOBSTER is the right starting point specifically because it ships *both* the
-message stream and its own reconstructed book snapshots. That makes the
-reconstruction falsifiable: replay the messages, compare against their
-snapshots, and any disagreement is a bug in this repo. A simulator nobody can
-check is worth nothing.
+Asking for both is the point. The message stream is the input and the book is
+an independent answer key, so the reconstruction is falsifiable: replay the
+messages, compare against the exchange's own book, and any disagreement is a
+bug in this repo. A simulator nobody can check is worth nothing.
+
+This was originally built against [LOBSTER](https://lobsterdata.com), whose
+free samples are now gated behind proof of purchase of a particular book and
+an institutional academic e-mail. `lobster.py` still reads that format. Two
+readers behind one message vocabulary is now a deliberate property rather than
+an accident — market data access moves, and when it does the cost should be a
+reader rather than a rewrite.
 
 ## Prior art in the author's own work
 
