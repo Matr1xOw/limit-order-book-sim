@@ -30,7 +30,7 @@ class BookError(Exception):
 class Book:
     """The visible book, advanced one message at a time."""
 
-    __slots__ = ("bids", "asks", "_strict", "orphans")
+    __slots__ = ("bids", "asks", "_strict", "orphans", "stale", "horizon")
 
     def __init__(self, *, strict: bool = True):
         """
@@ -49,6 +49,38 @@ class Book:
         self.asks: dict[int, int] = {}
         self._strict = strict
         self.orphans = 0
+        self.horizon: dict[int, int | None] = {BUY: None, SELL: None}
+        """
+        The worst price the seed could see on each side, or None if the book
+        was built from empty and therefore has no blind spot.
+
+        A ten-level snapshot says nothing whatsoever about the eleventh, so
+        every price beyond this is unknown in exactly the way a seeded level
+        is — but it never appears in `stale`, because it was never seeded.
+        Without this, a level holding 931 shares that we have watched two of
+        looks like a level we fully understand.
+        """
+        self.stale: set[tuple[int, int]] = set()
+        """
+        `(side, price)` levels whose size we cannot vouch for.
+
+        A window that opens mid-session inherits levels it never saw built,
+        and a ten-level seed inherits only ten of them. Sizes at those prices
+        are whatever the seed said minus whatever we have watched leave —
+        which is right only if nothing was resting below the seed's horizon.
+
+        Tracking this is what lets validation separate "the reconstruction is
+        wrong" from "the seed could not see that far", which are otherwise
+        indistinguishable in a diff.
+
+        Nothing ever leaves this set. It is tempting to forgive a level once
+        our count of it reaches zero — surely an empty level is a known
+        level — but that is precisely the case where the seed was wrong: our
+        count hit zero because we never knew about the size resting below the
+        seed's horizon, while the real level still holds shares. Every add
+        after that inherits the same error. Staleness at a price is a
+        property of the window's opening, and the window does not reopen.
+        """
 
     @classmethod
     def seeded(cls, snapshot: Snapshot, *, strict: bool = False) -> "Book":
@@ -61,8 +93,12 @@ class Book:
         book = cls(strict=strict)
         for price, size in snapshot.bids:
             book.bids[price] = size
+            book.stale.add((BUY, price))
         for price, size in snapshot.asks:
             book.asks[price] = size
+            book.stale.add((SELL, price))
+        book.horizon[BUY] = min(book.bids) if book.bids else None
+        book.horizon[SELL] = max(book.asks) if book.asks else None
         return book
 
     def side(self, direction: int) -> dict[int, int]:
@@ -137,6 +173,19 @@ class Book:
         else:
             raise BookError(f"unhandled action {action!r}")
 
+    def trusted(self, direction: int, price: int) -> bool:
+        """Whether this level's size is fully accounted for.
+
+        False for anything the seed touched, and for anything it could not
+        reach — a price worse than the deepest level it carried.
+        """
+        if (direction, price) in self.stale:
+            return False
+        edge = self.horizon[direction]
+        if edge is None:
+            return True
+        return price > edge if direction == BUY else price < edge
+
     def _add(self, direction: int, price: int, size: int) -> None:
         if size <= 0:
             return
@@ -158,6 +207,9 @@ class Book:
             # there and record that we could not account for the rest.
             self.orphans += 1
             book_side.pop(price, None)
+            # We just removed more than we knew about, so whatever the real
+            # book holds here, it is not what we think.
+            self.stale.add((direction, price))
             return
         if size == resting:
             del book_side[price]

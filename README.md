@@ -21,12 +21,40 @@ Early. See the roadmap below for what exists and what does not.
 - [x] LOBSTER message and snapshot readers
 - [x] Databento MBO and MBP-10 readers
 - [x] Visible book reconstruction
-- [ ] Reconstruction validated against the exchange's own snapshots
-      (top of book agrees 99.35% on the reference window; the residual is
-      chunk 4's job)
+- [x] Reconstruction validated against the exchange's own snapshots
 - [ ] Maker/taker fee schedules
 - [ ] Queue-position fill simulator
 - [ ] Latency curve runner
+
+## Is the reconstruction right?
+
+Yes, on every level it can account for. `python3 validate.py` replays the
+message stream and diffs it against the exchange's own published book at each
+event boundary — 170,304 comparisons over the reference window:
+
+    depth 1   exact  98.38%   trusted 100.000% over 49.9% of levels
+    depth 5   exact  93.07%   trusted 100.000% over 45.8% of levels
+    depth 10  exact  82.11%   trusted 100.000% over 40.5% of levels
+
+Two numbers, because one of them is not the code's fault. A window that opens
+mid-session inherits a book it never saw built, and a ten-level seed inherits
+only ten levels of it. Sizes at every other price are unknown — not wrong,
+unknown — and they stay unknown, because a level whose count we watch reach
+zero may still hold shares we never knew were there.
+
+**Exact** counts those as failures, which is why it falls away with depth: the
+deeper you look, the more of the seed's blind spot you are looking at.
+
+**Trusted** counts only levels whose entire history the replay watched, and it
+is 100.000% with zero conflicts. That is the number that says the code is
+right, and it is reported beside its coverage because a `trusted` predicate
+strict enough to exclude everything would also read 100%.
+
+Getting there cost two bugs, both found by the validator rather than by
+reading. The reconstruction double-counted every execution — Databento emits
+three rows per trade and only one of them removes size. And the validator
+itself seeded from a snapshot and then replayed the event that snapshot
+already included, applying it twice.
 
 ## The three things bar backtests get wrong
 
