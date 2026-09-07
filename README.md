@@ -23,7 +23,7 @@ Early. See the roadmap below for what exists and what does not.
 - [x] Visible book reconstruction
 - [x] Reconstruction validated against the exchange's own snapshots
 - [x] Maker/taker fee schedules
-- [ ] Queue-position fill simulator
+- [x] Queue-position fill simulator
 - [ ] Latency curve runner
 
 ## Is the reconstruction right?
@@ -55,6 +55,21 @@ reading. The reconstruction double-counted every execution — Databento emits
 three rows per trade and only one of them removes size. And the validator
 itself seeded from a snapshot and then replayed the event that snapshot
 already included, applying it twice.
+
+## The assumption the data cannot settle
+
+The feed says a hundred shares were withdrawn at a price. It does not say
+whether they were in front of your order or behind it, and that information is
+not recoverable — it was never published. Since queue position is the whole
+question, the simulator makes this an axis rather than a buried constant:
+
+    BEHIND        cancels never help you. The pessimistic bound, and the
+                  default, because it cannot flatter a strategy.
+    AHEAD         every cancel advances you. The optimistic bound.
+    PROPORTIONAL  cancels are spread uniformly through the queue.
+
+Reality lies between the first two. A conclusion that survives all three is
+robust to the assumption; one that only holds under AHEAD is an artifact of it.
 
 ## The three things bar backtests get wrong
 
