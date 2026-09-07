@@ -70,7 +70,7 @@ _ACTIONS = {
     EventType.CANCEL_PARTIAL: Action.CANCEL,
     EventType.CANCEL_TOTAL: Action.CANCEL,
     EventType.EXECUTE_VISIBLE: Action.EXECUTE,
-    EventType.EXECUTE_HIDDEN: Action.EXECUTE_HIDDEN,
+    EventType.EXECUTE_HIDDEN: Action.TRADE,
     EventType.CROSS: Action.STATUS,
     EventType.HALT: Action.STATUS,
 }

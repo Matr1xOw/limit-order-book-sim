@@ -34,14 +34,23 @@ class Action(Enum):
     EXECUTE = "execute"
     """Visible resting order traded against. Removes `size` at `price`."""
 
-    EXECUTE_HIDDEN = "execute_hidden"
+    TRADE = "trade"
     """
-    A trade that consumed no visible size.
+    A trade print that does not itself move the book.
 
-    Hidden orders, and the aggressor-side print that some feeds emit alongside
-    the resting-side fill. Either way nothing visible was queued, so the book
-    does not move — but the event is kept rather than dropped at the reader,
-    because it is real tape and a strategy may want it.
+    Two quite different things land here, and it is worth knowing which:
+
+      Hidden executions, where no visible size was ever queued.
+
+      Prints that accompany a removal the feed reports separately. Databento
+      emits three rows per execution — a `T` on the aggressor's side, an `F`
+      on the resting order, and a `C` that actually takes the size out. Only
+      the `C` may be applied; treating `F` as a removal double-counts it,
+      which measurably degrades agreement with the exchange's own book.
+
+    Either way nothing is removed here. The events are kept rather than
+    dropped at the reader, because they are real tape carrying aggressor side
+    and hidden volume, and a strategy may want both.
     """
 
     MODIFY = "modify"

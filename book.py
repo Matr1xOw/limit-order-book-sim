@@ -126,7 +126,7 @@ class Book:
         elif action is Action.CLEAR:
             self.bids.clear()
             self.asks.clear()
-        elif action in (Action.EXECUTE_HIDDEN, Action.STATUS):
+        elif action in (Action.TRADE, Action.STATUS):
             # Tape only. Nothing visible was resting, so nothing leaves.
             pass
         elif action is Action.MODIFY:

@@ -19,8 +19,11 @@ Early. See the roadmap below for what exists and what does not.
 
 - [x] Repo scaffold
 - [x] LOBSTER message and snapshot readers
+- [x] Databento MBO and MBP-10 readers
 - [x] Visible book reconstruction
-- [ ] Reconstruction validated against LOBSTER's own snapshots
+- [ ] Reconstruction validated against the exchange's own snapshots
+      (top of book agrees 99.35% on the reference window; the residual is
+      chunk 4's job)
 - [ ] Maker/taker fee schedules
 - [ ] Queue-position fill simulator
 - [ ] Latency curve runner

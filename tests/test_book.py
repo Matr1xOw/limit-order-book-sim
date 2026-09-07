@@ -15,7 +15,7 @@ def message(action, side, price, size, *, ts=0, order_id=1):
 
 SUBMIT = Action.ADD
 EXECUTE = Action.EXECUTE
-HIDDEN = Action.EXECUTE_HIDDEN
+HIDDEN = Action.TRADE
 CANCEL = Action.CANCEL
 PARTIAL = Action.CANCEL
 

@@ -12,3 +12,10 @@ LEVELS = 2
 
 MESSAGE_FILE = FIXTURE_DIR / "TEST_2012-06-21_34200000_57600000_message_2.csv"
 ORDERBOOK_FILE = FIXTURE_DIR / "TEST_2012-06-21_34200000_57600000_orderbook_2.csv"
+
+#: Databento fixtures, cut from a real AAPL export rather than hand-written.
+#: The mbo slice is chosen to straddle two executions so the trade/fill pairing
+#: is covered — the first forty rows of the window contain none, and a reader
+#: that got that wrong would have passed against them.
+DATABENTO_MBO = FIXTURE_DIR / "sample.mbo.csv"
+DATABENTO_MBP10 = FIXTURE_DIR / "sample.mbp-10.csv"
