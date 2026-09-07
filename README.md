@@ -44,7 +44,8 @@ wearing a signal's clothes, and you cannot tell without modelling them.
 
 Built against [LOBSTER](https://lobsterdata.com) sample files, which are free
 and cover a handful of Nasdaq names for one day each. They are not redistributed
-here — download them yourself and drop them in `data/`.
+here — see [`data/README.md`](data/README.md) for which sample to take and where
+to unzip it.
 
 LOBSTER is the right starting point specifically because it ships *both* the
 message stream and its own reconstructed book snapshots. That makes the

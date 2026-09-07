@@ -6,6 +6,7 @@ venv/
 # LOBSTER sample data. Redistribution is not ours to grant, and the files are
 # large enough that they do not belong in git regardless. See README for how
 # to fetch them.
-data/
+data/*
+!data/README.md
 *.csv
 !tests/fixtures/*.csv
