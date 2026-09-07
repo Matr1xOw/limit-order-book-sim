@@ -22,7 +22,7 @@ Early. See the roadmap below for what exists and what does not.
 - [x] Databento MBO and MBP-10 readers
 - [x] Visible book reconstruction
 - [x] Reconstruction validated against the exchange's own snapshots
-- [ ] Maker/taker fee schedules
+- [x] Maker/taker fee schedules
 - [ ] Queue-position fill simulator
 - [ ] Latency curve runner
 
