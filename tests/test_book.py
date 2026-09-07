@@ -1,27 +1,23 @@
 import unittest
 
 from book import Book, BookError, replay
-from lobster import BUY, SELL, EventType, Message, load_messages
+from lobster import load_messages
+from messages import BUY, SELL, Action, Message, Snapshot
 
 from .fixtures import MESSAGE_FILE
 
 
-def message(type_, direction, price, size, *, time=0.0, order_id=1):
+def message(action, side, price, size, *, ts=0, order_id=1):
     return Message(
-        time=time,
-        type=type_,
-        order_id=order_id,
-        size=size,
-        price=price,
-        direction=direction,
+        ts=ts, action=action, side=side, price=price, size=size, order_id=order_id
     )
 
 
-SUBMIT = EventType.SUBMIT
-EXECUTE = EventType.EXECUTE_VISIBLE
-HIDDEN = EventType.EXECUTE_HIDDEN
-CANCEL = EventType.CANCEL_TOTAL
-PARTIAL = EventType.CANCEL_PARTIAL
+SUBMIT = Action.ADD
+EXECUTE = Action.EXECUTE
+HIDDEN = Action.EXECUTE_HIDDEN
+CANCEL = Action.CANCEL
+PARTIAL = Action.CANCEL
 
 
 class Submissions(unittest.TestCase):
@@ -85,10 +81,10 @@ class TapeEvents(unittest.TestCase):
         # queue and its removal takes nothing out of the book.
         self.assertEqual(book.size_at(SELL, 1000000), 100)
 
-    def test_halt_leaves_the_book_alone(self):
+    def test_status_leaves_the_book_alone(self):
         book = Book()
         book.apply(message(SUBMIT, SELL, 1000000, 100))
-        book.apply(message(EventType.HALT, SELL, -1, 0))
+        book.apply(message(Action.STATUS, SELL, -1, 0))
         self.assertEqual(book.size_at(SELL, 1000000), 100)
 
 
@@ -139,15 +135,61 @@ class Replay(unittest.TestCase):
         book = None
         for _, book in replay(messages):
             pass
-        # Last message cancels the remaining 60 at 1000000, promoting 1000100.
-        self.assertEqual(book.best_ask, 1000100)
-        self.assertEqual(book.size_at(SELL, 1000100), 50)
-        self.assertEqual(book.best_bid, 999000)
+        # Last message cancels the remaining 60 at $100.00, promoting $100.01.
+        self.assertEqual(book.best_ask, 100_010_000_000)
+        self.assertEqual(book.size_at(SELL, 100_010_000_000), 50)
+        self.assertEqual(book.best_bid, 99_900_000_000)
 
     def test_yields_once_per_message(self):
         messages = load_messages(MESSAGE_FILE)
         self.assertEqual(sum(1 for _ in replay(messages)), len(messages))
 
+
+
+class Seeding(unittest.TestCase):
+    def test_seeded_book_starts_from_a_published_snapshot(self):
+        snapshot = Snapshot(
+            asks=((1000100, 50), (1000200, 25)), bids=((999000, 200),)
+        )
+        book = Book.seeded(snapshot)
+        self.assertEqual(book.best_ask, 1000100)
+        self.assertEqual(book.size_at(BUY, 999000), 200)
+
+    def test_seeded_book_is_lenient_by_default(self):
+        # A mid-session window is exactly where orphaned removals happen, so
+        # seeding and strictness would be a contradiction.
+        book = Book.seeded(Snapshot(asks=(), bids=()))
+        book.apply(message(CANCEL, BUY, 999000, 10))
+        self.assertEqual(book.orphans, 1)
+
+    def test_orphans_are_counted_not_hidden(self):
+        book = Book(strict=False)
+        book.apply(message(SUBMIT, SELL, 1000000, 100))
+        book.apply(message(EXECUTE, SELL, 1000000, 150))
+        self.assertEqual(book.orphans, 1)
+
+
+class Invariants(unittest.TestCase):
+    def test_clear_empties_both_sides(self):
+        book = Book()
+        book.apply(message(SUBMIT, SELL, 1000000, 100))
+        book.apply(message(SUBMIT, BUY, 999000, 100))
+        book.apply(message(Action.CLEAR, BUY, 0, 0))
+        self.assertIsNone(book.best_bid)
+        self.assertIsNone(book.best_ask)
+
+    def test_modify_is_rejected_rather_than_guessed_at(self):
+        book = Book()
+        book.apply(message(SUBMIT, SELL, 1000000, 100))
+        with self.assertRaises(BookError):
+            book.apply(message(Action.MODIFY, SELL, 1000000, 50))
+
+    def test_crossed_detects_an_impossible_book(self):
+        book = Book()
+        book.apply(message(SUBMIT, SELL, 999000, 100))
+        self.assertFalse(book.crossed)
+        book.apply(message(SUBMIT, BUY, 1000000, 100))
+        self.assertTrue(book.crossed)
 
 if __name__ == "__main__":
     unittest.main()

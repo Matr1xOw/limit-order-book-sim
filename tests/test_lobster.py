@@ -1,13 +1,7 @@
 import unittest
 
-from lobster import (
-    BUY,
-    SELL,
-    EventType,
-    find_pair,
-    load_messages,
-    load_snapshots,
-)
+from lobster import find_pair, load_messages, load_snapshots
+from messages import SELL, Action
 
 from .fixtures import FIXTURE_DIR, LEVELS, MESSAGE_FILE, ORDERBOOK_FILE
 
@@ -21,12 +15,13 @@ class LoadMessages(unittest.TestCase):
 
     def test_parses_fields_in_lobster_column_order(self):
         first = self.messages[0]
-        self.assertAlmostEqual(first.time, 34200.0)
-        self.assertEqual(first.type, EventType.SUBMIT)
+        self.assertEqual(first.ts, 34200_000_000_000)
+        self.assertEqual(first.action, Action.ADD)
         self.assertEqual(first.order_id, 1)
         self.assertEqual(first.size, 100)
-        self.assertEqual(first.price, 1000000)
-        self.assertEqual(first.direction, SELL)
+        # $100.00 in nanodollars, converted up from LOBSTER's 1000000.
+        self.assertEqual(first.price, 100_000_000_000)
+        self.assertEqual(first.side, SELL)
 
     def test_prices_stay_integers(self):
         # Not 100.0 dollars. Queue lookup is by exact price equality, so the
@@ -36,16 +31,15 @@ class LoadMessages(unittest.TestCase):
 
     def test_direction_names_the_resting_side_on_an_execution(self):
         execution = self.messages[3]
-        self.assertEqual(execution.type, EventType.EXECUTE_VISIBLE)
+        self.assertEqual(execution.action, Action.EXECUTE)
         # A resting *sell* was executed, so the aggressor was a buyer.
-        self.assertEqual(execution.direction, SELL)
+        self.assertEqual(execution.side, SELL)
 
-    def test_classifies_event_families(self):
-        self.assertTrue(self.messages[3].is_execution)
-        self.assertFalse(self.messages[3].is_cancel)
-        self.assertTrue(self.messages[4].is_cancel)
-        self.assertFalse(self.messages[4].is_execution)
-        self.assertFalse(self.messages[0].is_execution)
+    def test_both_cancel_codes_normalise_to_one_action(self):
+        # LOBSTER distinguishes partial from total cancels; the book does not
+        # care, because both carry the shares removed.
+        self.assertEqual(self.messages[4].action, Action.CANCEL)
+        self.assertTrue(self.messages[4].moves_book)
 
     def test_rejects_short_rows(self):
         broken = FIXTURE_DIR / "broken_message_2.csv"
@@ -68,14 +62,16 @@ class LoadSnapshots(unittest.TestCase):
         # After the first message the book holds a single ask and nothing
         # else; LOBSTER pads the other three slots with sentinels.
         first = self.snapshots[0]
-        self.assertEqual(first.asks, ((1000000, 100),))
+        self.assertEqual(first.asks, ((100_000_000_000, 100),))
         self.assertEqual(first.bids, ())
 
     def test_orders_levels_best_first(self):
         third = self.snapshots[2]
-        self.assertEqual(third.asks, ((1000000, 100), (1000100, 50)))
-        self.assertEqual(third.best_ask, 1000000)
-        self.assertEqual(third.best_bid, 999000)
+        self.assertEqual(
+            third.asks, ((100_000_000_000, 100), (100_010_000_000, 50))
+        )
+        self.assertEqual(third.best_ask, 100_000_000_000)
+        self.assertEqual(third.best_bid, 99_900_000_000)
 
     def test_best_prices_are_none_on_an_empty_side(self):
         self.assertIsNone(self.snapshots[0].best_bid)

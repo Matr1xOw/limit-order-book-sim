@@ -1,5 +1,10 @@
 """Readers for LOBSTER's two CSV exports.
 
+Kept working, but no longer the project's data source: the free samples now
+require proof of purchase of a particular book and an institutional academic
+e-mail address. See `data/README.md`. `databento.py` is what you want.
+
+
 LOBSTER ships each ticker-day as a pair of headerless CSV files:
 
   TICKER_DATE_START_END_message_N.csv    one row per exchange event
@@ -17,13 +22,14 @@ price level that orders are queued at by exact equality.
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
 
-#: Side of a limit order. LOBSTER's own encoding, kept rather than renamed.
-BUY = 1
-SELL = -1
+from messages import BUY, SELL, Action, Message, Snapshot
+
+#: LOBSTER quotes prices in ten-thousandths of a dollar; the shared vocabulary
+#: uses nanodollars. 1234500 (i.e. $123.45) becomes 123_450_000_000.
+_LOBSTER_TO_NANO = 100_000
 
 #: LOBSTER pads unoccupied book levels with these sentinels rather than
 #: shortening the row, so a 10-level file always has 40 columns.
@@ -56,66 +62,18 @@ class EventType(IntEnum):
     """Trading halt or resumption. A marker, not a book event."""
 
 
-@dataclass(frozen=True, slots=True)
-class Message:
-    """One exchange event."""
-
-    time: float
-    """Seconds after midnight, to nanosecond resolution."""
-
-    type: EventType
-
-    order_id: int
-    """Exchange order reference. Zero for events with no single owner."""
-
-    size: int
-    """Shares. For cancels, the shares removed rather than the order's total."""
-
-    price: int
-    """Ten-thousandths of a dollar. $12.34 is 123400."""
-
-    direction: int
-    """
-    `BUY` or `SELL`, naming the side of the *resting* limit order.
-
-    This is the field people get backwards. On an `EXECUTE_VISIBLE`,
-    `direction == BUY` means a resting bid was hit, which means the aggressor
-    was a seller. The message describes the order that was sitting there, not
-    the one that arrived.
-    """
-
-    @property
-    def is_execution(self) -> bool:
-        return self.type in (EventType.EXECUTE_VISIBLE, EventType.EXECUTE_HIDDEN)
-
-    @property
-    def is_cancel(self) -> bool:
-        return self.type in (EventType.CANCEL_PARTIAL, EventType.CANCEL_TOTAL)
-
-
-@dataclass(frozen=True, slots=True)
-class Snapshot:
-    """LOBSTER's own view of the book after one message.
-
-    Levels are ordered best-first and padding is stripped, so a snapshot from
-    a 10-level file may hold fewer than 10 entries per side if the book was
-    thin. Absence means "LOBSTER saw nothing there", not "there was nothing" —
-    a 10-level file simply cannot speak to level 11.
-    """
-
-    asks: tuple[tuple[int, int], ...]
-    """(price, size), ascending."""
-
-    bids: tuple[tuple[int, int], ...]
-    """(price, size), descending."""
-
-    @property
-    def best_ask(self) -> int | None:
-        return self.asks[0][0] if self.asks else None
-
-    @property
-    def best_bid(self) -> int | None:
-        return self.bids[0][0] if self.bids else None
+#: LOBSTER's event codes in the shared vocabulary. The two cancel codes differ
+#: only in whether the order had size left over, which the book does not care
+#: about — both carry the shares removed.
+_ACTIONS = {
+    EventType.SUBMIT: Action.ADD,
+    EventType.CANCEL_PARTIAL: Action.CANCEL,
+    EventType.CANCEL_TOTAL: Action.CANCEL,
+    EventType.EXECUTE_VISIBLE: Action.EXECUTE,
+    EventType.EXECUTE_HIDDEN: Action.EXECUTE_HIDDEN,
+    EventType.CROSS: Action.STATUS,
+    EventType.HALT: Action.STATUS,
+}
 
 
 def load_messages(path: str | Path) -> list[Message]:
@@ -134,14 +92,17 @@ def load_messages(path: str | Path) -> list[Message]:
                 raise ValueError(
                     f"{path}:{lineno}: expected 6 columns, found {len(row)}"
                 )
+            event = EventType(int(row[1]))
             messages.append(
                 Message(
-                    time=float(row[0]),
-                    type=EventType(int(row[1])),
-                    order_id=int(row[2]),
+                    # Seconds after midnight, to nanoseconds. Not epoch-based —
+                    # LOBSTER files carry no date, it lives in the filename.
+                    ts=int(round(float(row[0]) * 1_000_000_000)),
+                    action=_ACTIONS[event],
+                    side=int(row[5]),
+                    price=int(row[4]) * _LOBSTER_TO_NANO,
                     size=int(row[3]),
-                    price=int(row[4]),
-                    direction=int(row[5]),
+                    order_id=int(row[2]),
                 )
             )
     return messages
@@ -173,9 +134,9 @@ def load_snapshots(path: str | Path, levels: int) -> list[Snapshot]:
                 ask_price, ask_size = int(row[base]), int(row[base + 1])
                 bid_price, bid_size = int(row[base + 2]), int(row[base + 3])
                 if ask_price != _ASK_PADDING and ask_size > 0:
-                    asks.append((ask_price, ask_size))
+                    asks.append((ask_price * _LOBSTER_TO_NANO, ask_size))
                 if bid_price != _BID_PADDING and bid_size > 0:
-                    bids.append((bid_price, bid_size))
+                    bids.append((bid_price * _LOBSTER_TO_NANO, bid_size))
             snapshots.append(Snapshot(asks=tuple(asks), bids=tuple(bids)))
     return snapshots
 
