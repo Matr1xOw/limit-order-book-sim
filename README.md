@@ -15,7 +15,7 @@ queue position — including the part where your order arrives late.
 
 ## Status
 
-Early. See the roadmap below for what exists and what does not.
+Complete, for the question it set out to ask. 154 tests, no dependencies.
 
 - [x] Repo scaffold
 - [x] LOBSTER message and snapshot readers
@@ -24,7 +24,7 @@ Early. See the roadmap below for what exists and what does not.
 - [x] Reconstruction validated against the exchange's own snapshots
 - [x] Maker/taker fee schedules
 - [x] Queue-position fill simulator
-- [ ] Latency curve runner
+- [x] Latency curve runner
 
 ## Is the reconstruction right?
 
@@ -55,6 +55,52 @@ reading. The reconstruction double-counted every execution — Databento emits
 three rows per trade and only one of them removes size. And the validator
 itself seeded from a snapshot and then replayed the event that snapshot
 already included, applying it twice.
+
+## What it found
+
+`python3 sweep.py`, on 30 minutes of AAPL. A trivial passive strategy: quote
+100 shares on both sides at the touch every second, cancel after a second,
+mark each fill out against the mid a second later.
+
+      latency       cancels   queue   fills  fill rate       free     nasdaq
+          0ms        behind      45     202       5.9%    -0.808c    -0.608c
+        0.1ms        behind      45     196       5.7%    -0.878c    -0.678c
+          1ms        behind      45     192       5.6%    -0.922c    -0.722c
+         10ms        behind      45     194       5.7%    -0.921c    -0.721c
+        100ms        behind      43     202       5.9%    -0.991c    -0.791c
+
+          0ms  proportional      45     407      11.9%    -0.937c    -0.737c
+        0.1ms  proportional      45     386      11.3%    -0.968c    -0.768c
+          1ms  proportional      45     378      11.1%    -0.959c    -0.759c
+         10ms  proportional      45     372      10.9%    -0.951c    -0.751c
+        100ms  proportional      43     347      10.2%    -0.918c    -0.718c
+
+**Quoting the touch loses about eight tenths of a cent per share, and the
+rebate does not save it.** Twenty mils is two tenths of a cent; the hole is
+four times that. Every configuration is negative, under both bounds of the
+cancellation assumption, at every latency.
+
+That is adverse selection, and it is the entire point. A backtest that fills
+you whenever price touches your limit books half the spread and calls it
+profit. The fills are not free: you are filled precisely when someone who
+knows more wants the other side, and the position is underwater the moment it
+opens. Marking out against the mid a second later is what makes that visible.
+
+**Fill rate is 6%, not the 83% a naive harness reports.** The first version of
+this experiment let orders rest forever and measured 83%, which is a
+measurement of the market wandering rather than of anything a strategy could
+use. A one-second lifetime is the difference.
+
+**The cancellation assumption doubles the fill rate and changes nothing that
+matters.** BEHIND fills 5.9%, PROPORTIONAL 11.9% — a large effect on how often
+you trade, and none at all on whether it is worth doing. A conclusion that
+survives both bounds does not depend on the assumption.
+
+**Latency barely registers here, and that is a fact about this strategy rather
+than about latency.** Quoting a one-second-old touch and holding for a second,
+the loss is dominated by adverse selection, not by queue position; the median
+queue is 45 shares deep and 100ms of delay moves it to 43. Latency is decisive
+for a strategy whose edge *is* queue priority. This one has no edge to protect.
 
 ## The assumption the data cannot settle
 
