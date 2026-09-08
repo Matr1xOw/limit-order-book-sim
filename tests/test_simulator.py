@@ -299,3 +299,58 @@ class Reporting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Lifetimes(unittest.TestCase):
+    """Resting forever is what makes a fill rate meaningless."""
+
+    def _resting(self, lifetime, ahead=500):
+        sim = simulator()
+        sim.process(message(Action.ADD, BUY, 100, ahead))
+        order = sim.submit(ts=1, side=BUY, price=100, size=100, lifetime=lifetime)
+        sim.process(message(Action.ADD, BUY, 99, 1, ts=1))
+        return sim, order
+
+    def test_an_order_expires_once_its_lifetime_passes(self):
+        sim, order = self._resting(lifetime=100)
+        sim.process(message(Action.ADD, BUY, 99, 1, ts=200))
+        self.assertIs(order.status, Status.EXPIRED)
+
+    def test_an_expired_order_stops_filling(self):
+        sim, order = self._resting(lifetime=100)
+        sim.process(message(Action.ADD, BUY, 99, 1, ts=200))
+        sim.process(message(Action.TRADE, BUY, 100, 5000, ts=300, order_id=7))
+        sim.process(message(Action.CANCEL, BUY, 100, 5000, ts=300, order_id=7))
+        self.assertEqual(order.filled, 0)
+
+    def test_an_order_still_alive_fills_normally(self):
+        sim, order = self._resting(lifetime=1000)
+        sim.process(message(Action.TRADE, BUY, 100, 5000, ts=300, order_id=7))
+        sim.process(message(Action.CANCEL, BUY, 100, 5000, ts=300, order_id=7))
+        self.assertEqual(order.filled, 100)
+        self.assertIs(order.status, Status.FILLED)
+
+    def test_lifetime_is_measured_from_arrival_not_submission(self):
+        # Otherwise latency would shorten the queue time as well as worsening
+        # the position, charging a slow strategy twice for one problem.
+        sim = simulator(latency=500)
+        order = sim.submit(ts=0, side=BUY, price=100, size=10, lifetime=100)
+        self.assertEqual(order.expires, 600)
+
+    def test_a_partial_fill_survives_expiry(self):
+        sim, order = self._resting(lifetime=1000, ahead=0)
+        sim.process(message(Action.TRADE, BUY, 100, 40, ts=100, order_id=7))
+        sim.process(message(Action.CANCEL, BUY, 100, 40, ts=100, order_id=7))
+        sim.process(message(Action.ADD, BUY, 99, 1, ts=5000))
+        self.assertIs(order.status, Status.EXPIRED)
+        # The 40 that traded stay traded; expiry cancels the remainder.
+        self.assertEqual(order.filled, 40)
+
+    def test_no_lifetime_means_rest_forever(self):
+        sim, order = self._resting(lifetime=None)
+        sim.process(message(Action.ADD, BUY, 99, 1, ts=10**12))
+        self.assertIs(order.status, Status.RESTING)
+
+    def test_negative_lifetime_is_rejected(self):
+        with self.assertRaises(ValueError):
+            simulator().submit(ts=0, side=BUY, price=100, size=10, lifetime=-1)

@@ -84,6 +84,8 @@ class Status(Enum):
 
     FILLED = "filled"
     CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    """Withdrawn by its own lifetime without filling completely."""
 
 
 @dataclass
@@ -98,6 +100,17 @@ class Order:
 
     arrives: int
     """When it reaches the exchange. `submitted` plus latency."""
+
+    expires: int | None = None
+    """
+    When to give up, or None to rest forever.
+
+    Resting forever is what makes a naive fill-rate measurement useless: over
+    a long enough window the market wanders through almost any price, so
+    nearly everything eventually fills and queue position stops mattering. A
+    lifetime is what turns "did this ever fill" into "did this fill while the
+    quote was still worth having", which is the question a strategy asks.
+    """
 
     status: Status = Status.PENDING
     ahead: int = 0
@@ -137,7 +150,12 @@ class Simulation:
 
     @property
     def resting(self) -> list[Order]:
+        """Orders that reached the exchange, whatever became of them after."""
         return [o for o in self.orders if o.status is not Status.PENDING]
+
+    @property
+    def expired(self) -> list[Order]:
+        return [o for o in self.orders if o.status is Status.EXPIRED]
 
     @property
     def filled(self) -> list[Order]:
@@ -207,18 +225,36 @@ class FillSimulator:
         # trade consumed the front, a cancel might have come from anywhere.
         self._executing: set[int] = set()
 
-    def submit(self, ts: int, side: int, price: int, size: int) -> Order:
-        """Place a passive order, decided at `ts`, arriving `latency` later."""
+    def submit(
+        self,
+        ts: int,
+        side: int,
+        price: int,
+        size: int,
+        lifetime: int | None = None,
+    ) -> Order:
+        """Place a passive order, decided at `ts`, arriving `latency` later.
+
+        `lifetime` is nanoseconds to rest *after arriving* before giving up.
+        Measured from arrival rather than from submission so that latency
+        does not quietly shorten the order's time in the queue as well as
+        worsening its position — those are two different penalties, and
+        conflating them would overstate the cost of being slow.
+        """
         if size <= 0:
             raise ValueError(f"size must be positive, got {size}")
         if side not in (BUY, SELL):
             raise ValueError(f"side must be BUY or SELL, got {side!r}")
+        if lifetime is not None and lifetime < 0:
+            raise ValueError(f"lifetime must not be negative, got {lifetime}")
+        arrives = ts + self.latency
         order = Order(
             side=side,
             price=price,
             size=size,
             submitted=ts,
-            arrives=ts + self.latency,
+            arrives=arrives,
+            expires=None if lifetime is None else arrives + lifetime,
         )
         self._pending.append(order)
         self.simulation.orders.append(order)
@@ -238,6 +274,7 @@ class FillSimulator:
         """Advance one message: admit arrivals, work the queue, apply to book."""
         self.simulation.messages += 1
         self._admit(message.ts)
+        self._expire(message.ts)
 
         # Queue effects are computed against the book as it stands *before*
         # this message applies. An execution consumes size that was resting a
@@ -266,6 +303,17 @@ class FillSimulator:
             order.status = Status.RESTING
             self._resting.append(order)
         self._pending = still_pending
+
+    def _expire(self, now: int) -> None:
+        """Retire orders that have outlived their usefulness.
+
+        A partially filled order still expires. The shares that traded stay
+        traded — this is a cancellation of the remainder, not an unwind.
+        """
+        for order in list(self._resting):
+            if order.expires is not None and order.expires <= now:
+                order.status = Status.EXPIRED
+                self._resting.remove(order)
 
     def _consume(self, message: Message, *, execution: bool) -> None:
         """Apply a removal at some price to any of our orders resting there."""
@@ -321,6 +369,7 @@ def run(
     latency: int = 0,
     cancels: CancelModel = CancelModel.BEHIND,
     schedule: FeeSchedule = NASDAQ,
+    lifetime: int | None = None,
 ) -> Simulation:
     """Replay `messages`, submitting `orders` as their decision times pass.
 
@@ -335,7 +384,7 @@ def run(
     index = 0
     for message in messages:
         while index < len(queue) and queue[index][0] <= message.ts:
-            simulator.submit(*queue[index])
+            simulator.submit(*queue[index], lifetime=lifetime)
             index += 1
         simulator.process(message)
     return simulator.simulation
