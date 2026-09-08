@@ -131,11 +131,6 @@ class Order:
         return self.size - self.filled
 
     @property
-    def notional(self) -> int:
-        """Filled shares at the limit price, in nanodollars."""
-        return self.filled * self.price
-
-    @property
     def wait(self) -> int | None:
         """Nanoseconds from arrival to first fill, or None if never filled."""
         return None if self.first_fill is None else self.first_fill - self.arrives

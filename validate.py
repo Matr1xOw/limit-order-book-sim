@@ -46,25 +46,6 @@ class Divergence:
     trusted: bool = True
     """False when the disagreement involves a level the seed could not see."""
 
-    @property
-    def truncation_only(self) -> bool:
-        """True when every level we report agrees and we simply have fewer.
-
-        The signature of the depth shortfall rather than of a reconstruction
-        error: a ten-level seed cannot know level eleven, so as the seeded
-        levels erode, deeper ones rise into view that we never saw created.
-        Distinguishing this from a genuine conflict is the difference between
-        a bounded, explainable gap and a broken book.
-        """
-        for side in ("bids", "asks"):
-            ours = getattr(self.ours, side)
-            theirs = getattr(self.theirs, side)
-            if len(ours) > len(theirs):
-                return False
-            if ours != theirs[: len(ours)]:
-                return False
-        return True
-
     def describe(self, depth: int) -> str:
         lines = [f"message {self.index}, sequence {self.sequence}:"]
         for label, side in (("bids", "bids"), ("asks", "asks")):

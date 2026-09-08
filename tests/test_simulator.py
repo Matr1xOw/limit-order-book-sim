@@ -2,7 +2,7 @@ import unittest
 
 from book import Book
 from fees import FREE, NASDAQ
-from messages import BUY, SELL, Action, Message, Snapshot
+from messages import BUY, SELL, Action, Message
 from simulator import CancelModel, FillSimulator, Status, run
 
 

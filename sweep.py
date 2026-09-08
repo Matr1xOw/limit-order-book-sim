@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import argparse
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from book import Book, replay
@@ -89,11 +89,7 @@ class Outcome:
     gross: int = 0
     """Markout P&L before fees, in nanodollars."""
 
-    queue_on_arrival: list[int] = None  # type: ignore[assignment]
-
-    def __post_init__(self):
-        if self.queue_on_arrival is None:
-            self.queue_on_arrival = []
+    queue_on_arrival: list[int] = field(default_factory=list)
 
     @property
     def fill_rate(self) -> float:

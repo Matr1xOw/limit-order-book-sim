@@ -25,7 +25,7 @@ import csv
 from enum import IntEnum
 from pathlib import Path
 
-from messages import BUY, SELL, Action, Message, Snapshot
+from messages import Action, Message, Snapshot
 
 #: LOBSTER quotes prices in ten-thousandths of a dollar; the shared vocabulary
 #: uses nanodollars. 1234500 (i.e. $123.45) becomes 123_450_000_000.
