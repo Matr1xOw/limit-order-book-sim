@@ -1,0 +1,23 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The floor is 3.10 for the `int | None` annotations, and the ceiling
+        # is whatever is current. Nothing here needs a third-party package, so
+        # there is no install step and nothing to pin.
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run tests
+        run: python -m unittest discover -v

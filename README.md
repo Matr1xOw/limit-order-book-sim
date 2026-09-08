@@ -157,10 +157,38 @@ a chart-pattern signal desk whose backtester is honest about lookahead and
 intrabar ambiguity but still assumes touch-equals-fill. That assumption is the
 thing being replaced here.
 
+## Performance, and what it is not
+
+Measured on the reference window, one core:
+
+    parsing      300k messages/sec
+    replay      4785k messages/sec
+
+The reconstruction is not the bottleneck — CSV parsing is, by a factor of
+sixteen. `Book.apply` is a dictionary update and a branch, and Python does
+those faster than it decodes text.
+
+That number is deliberately not presented as a latency result. **This is a
+research tool: it measures the market's latency, not its own.** Nothing here
+runs in a trading path, so wall-clock throughput bounds how fast experiments
+iterate and nothing else. Replaying half a million messages takes a tenth of a
+second, which is not the constraint on anything.
+
+A version that *did* sit in a trading path would be built differently, and the
+differences are not subtle: no per-message object, price levels in an array
+indexed by offset from a reference price rather than a hash map, arena
+allocation with nothing freed in the hot loop, and the whole thing in C++ or
+Rust so the tail is measurable at all. Python's garbage collector alone makes a
+p99.9 meaningless. Those are real changes, not a port, which is why this
+repository does not pretend to have made them.
+
 ## Running
 
 ```sh
-python3 -m unittest discover -v
+python3 -m unittest discover -v   # 154 tests
+python3 validate.py               # check the book against the exchange's
+python3 sweep.py                  # what quoting the touch is worth
 ```
 
-No dependencies.
+No dependencies. The two runners need data in `data/` — see
+[`data/README.md`](data/README.md).
